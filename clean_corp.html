@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+
+<html>
+<head>
+  <title>clean_corp.rb</title>
+  <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+  <link rel="stylesheet" media="all" href="public/stylesheets/normalize.css" />
+  <link rel="stylesheet" media="all" href="docco.css" />
+</head>
+<body>
+  <div class="container">
+    <div class="page">
+
+      <div class="header">
+        
+          <h1>clean_corp.rb</h1>
+        
+
+        
+      </div>
+
+      
+        
+        <h2>Cleaning Puerto Rico corporation registry data</h2>
+
+        
+      
+        
+        <p>I found this dataset to be very noisy. It&#39;s undersdantable, given it contains data from 
+the last century. I sat down and tried to clean it a bit, specially the city data, 
+so I could get some statistics of corporations by cities. Here&#39;s my attempt. Feel free 
+to fork at <a href="https://github.com/miguelrios/prtools">https://github.com/miguelrios/prtools</a>, file issues or submit pull requests.</p>
+<h2>Steps: </h2>
+
+        
+      
+        
+        <ol>
+<li>Download <a href="https://docs.google.com/uc?id=0B02ORhoOKjUSYnNpX1ZOUDViOFk&amp;export=download">https://docs.google.com/uc?id=0B02ORhoOKjUSYnNpX1ZOUDViOFk&amp;export=download</a></li>
+<li>Open in Excel and save as CSV.</li>
+<li>Open your terminal, be sure you have ruby 1.9.3 installed (<a href="http://www.ruby-lang.org/en/downloads/">http://www.ruby-lang.org/en/downloads/</a>)</li>
+<li><code>$ &gt; irb</code></li>
+<li>Copy pasta and have fun!</li>
+</ol>
+<p>Let&#39;s load the CSV and save it into an array of objects</p>
+
+        
+          <div class='highlight'><pre><span class="keyword">require</span> <span class="string">'csv'</span>
+path = <span class="string">"/Users/miguel/Dropbox/CorpsBAK.csv"</span>
+dirty_data = []
+columns = []
+index = <span class="number">0</span>
+
+<span class="constant">CSV</span>.foreach(path, <span class="symbol">encoding:</span> <span class="string">"ISO8859-1"</span>) <span class="keyword">do</span> |row|
+  <span class="keyword">if</span>(index == <span class="number">0</span>)
+    columns = row.select <span class="keyword">do</span> |x| x != <span class="keyword">nil</span> <span class="keyword">end</span>
+  <span class="keyword">else</span>
+    cleaner_row = {}
+    columns.each_with_index <span class="keyword">do</span> |item, index|
+      cleaner_row[item.chomp.strip] = row[index]
+    <span class="keyword">end</span>
+    dirty_data &lt;&lt; cleaner_row
+  <span class="keyword">end</span>
+  index = index + <span class="number">1</span>
+<span class="keyword">end</span></pre></div>
+        
+      
+        
+        <pre><code>1.9.3p327 :128 &gt; dirty_data.size
+=&gt; 489184</code></pre>
+<p>489184 corporations? That seems high. 
+let&#39;s look at the last row.</p>
+<pre><code>1.9.3p327 :129 &gt; dirty_data.last
+=&gt; {&quot;DateCreated&quot;=&gt;nil, &quot;CorpRegisterIndex&quot;=&gt;nil, &quot;CorpName&quot;=&gt;nil, &quot;CorpClass&quot;=&gt;nil, &quot;CorpType&quot;=&gt;nil, &quot;Jurisdiction&quot;=&gt;nil, &quot;NatureOfService&quot;=&gt;nil, &quot;OrganizationFormType&quot;=&gt;nil, &quot;StockClass&quot;=&gt;nil, &quot;StockCount&quot;=&gt;nil, &quot;ToDate&quot;=&gt;nil, &quot;Limitations&quot;=&gt;nil, &quot;ParValue&quot;=&gt;nil, &quot;IsNoParValue&quot;=&gt;nil, &quot;IsLimitationByDirectors&quot;=&gt;nil, &quot;StreetAddress1&quot;=&gt;nil, &quot;StreetAddress2&quot;=&gt;nil, &quot;StreetCity&quot;=&gt;nil, &quot;StreetState&quot;=&gt;nil, &quot;StreetProvince&quot;=&gt;nil, &quot;StreetProvince2&quot;=&gt;nil, &quot;MailingAddress1&quot;=&gt;nil, &quot;MailingAddress2&quot;=&gt;nil, &quot;MailingCity&quot;=&gt;nil, &quot;MailingState&quot;=&gt;nil, &quot;MailingProvince&quot;=&gt;nil, &quot;MailingProvince3&quot;=&gt;nil}</code></pre>
+<p>Yep. There are rows that are completely empty, maybe from the conversion to CSV. Let&#39;s get rid of those by defining some required attributes.
+I&#39;d say a corporation is valid if it has a name (CorpName) and an index of registry (CorpRegisterIndex).</p>
+
+        
+          <div class='highlight'><pre>required = [<span class="string">"CorpName"</span>, <span class="string">"CorpRegisterIndex"</span>]
+less_dirty_data = dirty_data.select <span class="keyword">do</span> |row|
+  valid = <span class="keyword">true</span>
+  row.keys.each <span class="keyword">do</span> |column|
+    <span class="keyword">unless</span> required.index(column) == <span class="keyword">nil</span>
+      <span class="keyword">if</span> row[column] == <span class="keyword">nil</span>
+        valid = <span class="keyword">false</span>
+      <span class="keyword">end</span>
+    <span class="keyword">end</span>
+  <span class="keyword">end</span>
+  valid
+<span class="keyword">end</span></pre></div>
+        
+      
+        
+        <pre><code>1.9.3p327 :331 &gt; less_dirty_data.size
+ =&gt; 287387</code></pre>
+<p>that reduced it a bit.</p>
+<p>now, for analytics purposes, it may be nice to have some clean city data. Let&#39;s look at mailingCity values. 
+There should be something close to 78 cities/municipalities. </p>
+
+        
+          <div class='highlight'><pre>cities = less_dirty_data.map <span class="keyword">do</span> |item| item[<span class="string">"StreetCity"</span>] || <span class="string">"UNKNOWN"</span> <span class="keyword">end</span>.sort.uniq</pre></div>
+        
+      
+        
+        <pre><code>1.9.3p327 :339 &gt; cities.size
+ =&gt; 1380</code></pre>
+<p>Not even close. 
+Looking at the data, there&#39;s a lot of incongruences. Capitalized names, double spaces, accents some times.
+e.g.: &quot;San jUan&quot;, &quot;San jUan,&quot;, &quot;San jaun&quot;, &quot;San jaun,&quot;, &quot;San juN&quot;, &quot;San juan&quot;, &quot;San juan &quot;
+We can clean most of this by lowercasing verything, removing extra spaces and removing accents.</p>
+<p>you need active support for this, so <code>gem install activesupport</code> if you don&#39;t have it. </p>
+
+        
+          <div class='highlight'><pre><span class="keyword">require</span> <span class="string">'rubygems'</span>
+<span class="keyword">require</span> <span class="string">'active_support/all'</span>
+
+cleaner_cities = cities.map <span class="keyword">do</span> |city|
+  city = city.force_encoding(<span class="string">'iso-8859-1'</span>).encode(<span class="string">'utf-8'</span>).downcase.squeeze(<span class="string">" "</span>).chomp.strip
+  city = <span class="constant">ActiveSupport::Multibyte::Chars</span>.new(city).
+    mb_chars.normalize(<span class="symbol">:kd</span>).gsub(<span class="regexp">/[^\x‌​00-\x7F]/n</span>,<span class="string">''</span>).downcase.to_s
+  city = city.chomp(<span class="string">","</span>).chomp(<span class="string">"."</span>)
+  city = city.reverse.chomp(<span class="string">","</span>).chomp(<span class="string">"."</span>).reverse
+<span class="keyword">end</span>.sort.uniq</pre></div>
+        
+      
+        
+        <pre><code>1.9.3p327 :096 &gt; cleaner_cities.size
+ =&gt; 751</code></pre>
+<p>Not awesome, but maybe good enough for now. Let&#39;s get some stats by normalizing this. 
+I&#39;ll abstract the normalization into a function first, then group by and count how many 
+records do we have by city. </p>
+
+        
+          <div class='highlight'><pre><span class="function"><span class="keyword">def</span> <span class="title">normalize_pueblo</span><span class="params">(city)</span></span>
+  city = city.force_encoding(<span class="string">'iso-8859-1'</span>).encode(<span class="string">'utf-8'</span>).downcase.squeeze(<span class="string">" "</span>).chomp.strip
+  city = <span class="constant">ActiveSupport::Multibyte::Chars</span>.new(city).
+    mb_chars.normalize(<span class="symbol">:kd</span>).gsub(<span class="regexp">/[^\x‌​00-\x7F]/n</span>,<span class="string">''</span>).downcase.to_s
+  city = city.chomp(<span class="string">","</span>).chomp(<span class="string">"."</span>)
+  city = city.reverse.chomp(<span class="string">","</span>).chomp(<span class="string">"."</span>).reverse
+  city
+<span class="keyword">end</span>
+
+city_counts = []
+grouped = less_dirty_data.group_by <span class="keyword">do</span> |item| 
+  normalize_pueblo(item[<span class="string">"StreetCity"</span>] || item[<span class="string">"MailingCity"</span>] || <span class="string">"UNKNOWN"</span>) 
+<span class="keyword">end</span>.each <span class="keyword">do</span> |clean_city, values|
+  city_counts &lt;&lt; {<span class="symbol">:city</span> =&gt; clean_city, <span class="symbol">:records</span> =&gt; values.size}
+<span class="keyword">end</span></pre></div>
+        
+      
+        
+        <p>Some quick inspection shows that the top ~100 cities with most records look legit. </p>
+<pre><code>1.9.3p327 :149 &gt; city_counts.sort do |a,b| b[:records] &lt;=&gt; a[:records] end.select do |item| item[:city] != &quot;unknown&quot; and item[:city] != &quot;null&quot; end[0..97].map do |item| item[:city] end
+  =&gt; [&quot;san juan&quot;, &quot;bayamon&quot;, &quot;guaynabo&quot;, &quot;carolina&quot;, &quot;caguas&quot;, &quot;ponce&quot;, &quot;mayaguez&quot;, &quot;toa baja&quot;, &quot;trujillo alto&quot;, &quot;arecibo&quot;, &quot;dorado&quot;, &quot;humacao&quot;, &quot;toa alta&quot;, &quot;vega baja&quot;, &quot;aguadilla&quot;, &quot;hato rey&quot;, &quot;rio piedras&quot;, &quot;gurabo&quot;, &quot;manati&quot;, &quot;guayama&quot;, &quot;rio grande&quot;, &quot;fajardo&quot;, &quot;cayey&quot;, &quot;cabo rojo&quot;, &quot;isabela&quot;, &quot;canovanas&quot;, &quot;cidra&quot;, &quot;catano&quot;, &quot;vega alta&quot;, &quot;santurce&quot;, &quot;hatillo&quot;, &quot;san sebastian&quot;, &quot;las piedras&quot;, &quot;aguada&quot;, &quot;juncos&quot;, &quot;yauco&quot;, &quot;corozal&quot;, &quot;san german&quot;, &quot;juana diaz&quot;, &quot;moca&quot;, &quot;camuy&quot;, &quot;coamo&quot;, &quot;san lorenzo&quot;, &quot;aguas buenas&quot;, &quot;luquillo&quot;, &quot;naguabo&quot;, &quot;salinas&quot;, &quot;aibonito&quot;, &quot;naranjito&quot;, &quot;yabucoa&quot;, &quot;anasco&quot;, &quot;hormigueros&quot;, &quot;barceloneta&quot;, &quot;lares&quot;, &quot;barranquitas&quot;, &quot;rincon&quot;, &quot;lajas&quot;, &quot;quebradillas&quot;, &quot;morovis&quot;, &quot;vieques&quot;, &quot;santa isabel&quot;, &quot;utuado&quot;, &quot;loiza&quot;, &quot;sabana grande&quot;, &quot;arroyo&quot;, &quot;orocovis&quot;, &quot;ciales&quot;, &quot;old san juan&quot;, &quot;penuelas&quot;, &quot;patillas&quot;, &quot;adjuntas&quot;, &quot;villalba&quot;, &quot;ceiba&quot;, &quot;guayanilla&quot;, &quot;guanica&quot;, &quot;coto laurel&quot;, &quot;comerio&quot;, &quot;jayuya&quot;, &quot;florida&quot;, &quot;maunabo&quot;, &quot;sanjuan&quot;, &quot;las marias&quot;, &quot;puerto nuevo&quot;, &quot;levittown&quot;, &quot;condado&quot;, &quot;culebra&quot;, &quot;sabana seca&quot;, &quot;boqueron&quot;, &quot;maricao&quot;, &quot;isla verde&quot;, &quot;saint just&quot;, &quot;aguirre&quot;, &quot;mercedita&quot;, &quot;ensenada&quot;, &quot;miramar&quot;, &quot;riopiedras&quot;, &quot;cupey&quot;, &quot;new york&quot;]</code></pre>
+<p>Let&#39;s geek out a bit now. There&#39;s this thing called <a href="http://en.wikipedia.org/wiki/Levenshtein_distance">Levenshtein_distance</a>
+that we can use to calculate the similarity between two strings. The lower the number, the more similar they are.
+In this dataset, much of the inconsistencies come from typos (see San Juan vs. San Juann). This can be detected
+by calculating the distance between legit names (top ~100 in <code>city_counts</code>) and all the records. </p>
+<p>you need to install <code>levenshtein-ffi</code> by running <code>gem install levenshtein-ffi</code>. You may need to 
+run <code>gem install ffi</code> first.</p>
+<p>here&#39;s a simple example for san juan</p>
+
+        
+          <div class='highlight'><pre><span class="keyword">require</span> <span class="string">'levenshtein-ffi'</span>
+city = <span class="string">"san juan"</span>
+distances = cleaner_cities.map <span class="keyword">do</span> |a| {<span class="symbol">:city=&gt;a</span>, <span class="symbol">:distance</span> =&gt; <span class="constant">Levenshtein</span>.distance(city, a)} <span class="keyword">end</span>
+distances.select <span class="keyword">do</span> |a| a[<span class="symbol">:distance</span>] &lt;= <span class="number">1</span> <span class="keyword">end</span>.map <span class="keyword">do</span> |c| c[<span class="symbol">:city</span>] <span class="keyword">end</span></pre></div>
+        
+      
+        
+        <pre><code>1.9.3p327 :148 &gt; distances.select do |a| a[:d] &lt;= 1 end.map do |c| c[:city] end 
+  =&gt; [&quot;`san juan&quot;, &quot;dsan juan&quot;, &quot;psan juan&quot;, &quot;sa juan&quot;, &quot;sab juan&quot;, &quot;sabn juan&quot;, &quot;sam juan&quot;, &quot;san jaun&quot;, &quot;san jua&quot;, &quot;san jua n&quot;, &quot;san juaj&quot;, &quot;san juam&quot;, &quot;san juan&quot;, &quot;san juan&#39;&quot;, &quot;san juanm&quot;, &quot;san juann&quot;, &quot;san juian&quot;, &quot;san jun&quot;, &quot;san juna&quot;, &quot;san uan&quot;, &quot;san uuan&quot;, &quot;sanb juan&quot;, &quot;sanjuan&quot;, &quot;sann juan&quot;, &quot;sasn juan&quot;, &quot;sn juan&quot;, &quot;sna juan&quot;, &quot;ssan juan&quot;]</code></pre>
+<p>See? <a href="http://i.imgur.com/UmpOi.gif">Magic</a>.
+Now let&#39;s run this in the entire dataset. First we&#39;ll make a map where the key will be the dubious city
+and the value will be the legit city based in this calculation. </p>
+
+        
+          <div class='highlight'><pre>legit_cities = city_counts.sort <span class="keyword">do</span> |a,b| 
+  b[<span class="symbol">:records</span>] &lt;=&gt; a[<span class="symbol">:records</span>] 
+<span class="keyword">end</span>.select <span class="keyword">do</span> |item| item[<span class="symbol">:city</span>] != <span class="string">"unknown"</span> <span class="keyword">and</span> item[<span class="symbol">:city</span>] != <span class="string">"null"</span> <span class="keyword">end</span>[<span class="number">0</span>..<span class="number">97</span>].map <span class="keyword">do</span> |item| item[<span class="symbol">:city</span>] <span class="keyword">end</span>;
+
+cities_map = {}
+legit_cities.each <span class="keyword">do</span> |city|
+  distances = cleaner_cities.map <span class="keyword">do</span> |a| {<span class="symbol">:city=&gt;a</span>, <span class="symbol">:distance</span> =&gt; <span class="constant">Levenshtein</span>.distance(city, a)} <span class="keyword">end</span>
+  similar = distances.select <span class="keyword">do</span> |a| a[<span class="symbol">:distance</span>] &lt;= <span class="number">1</span> <span class="keyword">end</span>.map <span class="keyword">do</span> |c| c[<span class="symbol">:city</span>] <span class="keyword">end</span>
+  similar.each <span class="keyword">do</span> |s|
+    cities_map[s] = city
+  <span class="keyword">end</span>
+<span class="keyword">end</span></pre></div>
+        
+      
+        
+        <p>Let&#39;s see:</p>
+<pre><code>1.9.3p327 :215 &gt; cities_map[&quot;psan juan&quot;]
+=&gt; &quot;san juan&quot;</code></pre>
+<p>And another one:</p>
+<pre><code>1.9.3p327 :223 &gt;   cities_map[&quot;barranquites&quot;]
+ =&gt; &quot;barranquitas&quot; 
+Hashtag triunfo!!!</code></pre>
+<p>Let&#39;s run this mapping in the entire dataset, adding a column named &quot;PredictedCity&quot; 
+so we don&#39;t override the original one, in case we mess up. I&#39;ll also use &quot;MailingCity&quot; as 
+a fallback in case there&#39;s no StreetCity. </p>
+
+        
+          <div class='highlight'><pre>cleaner_data = less_dirty_data.map <span class="keyword">do</span> |row|
+  row[<span class="string">"PredictedCity"</span>] = cities_map[normalize_pueblo(row[<span class="string">"StreetCity"</span>] || row[<span class="string">"MailingCity"</span>] || <span class="string">"UNKNOWN"</span>)]
+  row
+<span class="keyword">end</span></pre></div>
+        
+      
+        
+        <p>Now let&#39;s see how many unique predicted cities we have: </p>
+<pre><code>1.9.3p327 :232 &gt; cleaner_data.map do |item| item[&quot;PredictedCity&quot;] || &quot;UNKNOWN&quot; end.sort.uniq.size
+ =&gt; 98</code></pre>
+<p>Kinda obvious. </p>
+<p>Now let&#39;s save our hopefully cleaner dataset. I prefer tab separated files, so I&#39;m gonna do that. </p>
+
+        
+          <div class='highlight'><pre>columns &lt;&lt; <span class="string">"PredictedCity"</span>
+
+tsv_string = columns.join(<span class="string">"\t"</span>) + <span class="string">"\n"</span>
+cleaner_data.each <span class="keyword">do</span> |item|
+  row = []
+  columns.each <span class="keyword">do</span> |column|
+    cell = item[column]
+    <span class="keyword">unless</span> cell == <span class="keyword">nil</span> || cell.downcase == <span class="string">"unknown"</span> || cell.downcase == <span class="string">"null"</span>
+      row &lt;&lt; item[column].gsub(<span class="string">"\t"</span>, <span class="string">" "</span>)
+    <span class="keyword">else</span>
+      row &lt;&lt; <span class="string">""</span>
+    <span class="keyword">end</span>    
+  <span class="keyword">end</span>
+  tsv_string &lt;&lt; row.join(<span class="string">"\t"</span>) + <span class="string">"\n"</span>
+<span class="keyword">end</span>
+w = <span class="constant">File</span>.open(<span class="string">"/Users/miguel/Dropbox/cleaner_corps.tsv"</span>, <span class="string">"w"</span>)
+w.write(tsv_string)
+w.close</pre></div>
+        
+      
+        
+        <p>The end.</p>
+
+        
+      
+      <div class="fleur">h</div>
+    </div>
+  </div>
+</body>
+</html>
